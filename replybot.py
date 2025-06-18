@@ -1,12 +1,14 @@
+import os
 print("Bot started!")
 print("Doing something...")
+
 from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# Aapka bot token
-TOKEN = "7668706365:AAENBfo8s3XvQw3XQx1HiJB8l--TikM54dQ"
+# Telegram Bot Token from environment
+TOKEN = os.environ.get("BOT_TOKEN")
 
-# Jin IDs ko ignore karna hai
+# IDs to exclude (channels/admins/users)
 EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134]
 
 # /start command
@@ -24,36 +26,31 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-# Auto reply handler
+# Auto reply message handler
 async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
-    # Group/supergroup me ignore logic
+    # Ignore specific users/channels/admins
     if chat.type in ["group", "supergroup"]:
-        # Ignore announcement channel
         if update.message.sender_chat and update.message.sender_chat.id in EXCLUDED_IDS:
             return
-
-        # Ignore specific users
         if user and user.id in EXCLUDED_IDS:
             return
-
-        # Ignore admins
         try:
             member: ChatMember = await context.bot.get_chat_member(chat.id, user.id)
             if member.status in ["administrator", "creator"]:
                 return
         except:
-            pass  # Error ignore
+            pass
 
-    # ✅ Yeh aapka reply text hai (custom)
+    # Bot reply message
     await update.message.reply_text(
         "ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\n"
         "ᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨"
     )
 
-# Bot setup
+# Application setup
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
