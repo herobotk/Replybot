@@ -1,3 +1,19 @@
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'Bot is alive!')
+
+def run_http_server():
+    server = HTTPServer(("", 8080), HealthHandler)
+    server.serve_forever()
+
+# Yeh line zaroor chahiye
+threading.Thread(target=run_http_server, daemon=True).start()
+
 import os
 from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
@@ -41,19 +57,3 @@ app.add_handler(CommandHandler("help", help_command))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply_message))
 
 app.run_polling()
-
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'Bot is alive!')
-
-def run_http_server():
-    server = HTTPServer(("", 8080), HealthHandler)
-    server.serve_forever()
-
-# Run dummy server in background thread
-threading.Thread(target=run_http_server, daemon=True).start()
