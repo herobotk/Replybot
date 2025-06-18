@@ -1,3 +1,6 @@
+# -------------------------------
+# Health check server (top of file)
+# -------------------------------
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -11,9 +14,12 @@ def run_http_server():
     server = HTTPServer(("", 8080), HealthHandler)
     server.serve_forever()
 
-# Yeh line zaroor chahiye
+# Start dummy HTTP server in background
 threading.Thread(target=run_http_server, daemon=True).start()
 
+# -------------------------------
+# Your actual bot code (below)
+# -------------------------------
 import os
 from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
