@@ -18,19 +18,20 @@ def run_http_server():
 threading.Thread(target=run_http_server, daemon=True).start()
 
 # -------------------------------
-# Telegram bot code
+# Your actual bot code (v20.6 compatible)
 # -------------------------------
 import os
-from dotenv import load_dotenv
 from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-load_dotenv()
+# Get bot token from environment variable
 TOKEN = os.getenv("BOT_TOKEN")
+
+# IDs that are excluded from replies
 EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134]
 
-# Track last message per user to detect duplicates
-last_messages = {}
+# Track which users already sent a message
+replied_users = set()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Hello Watcher! I am alive and running!")
@@ -48,14 +49,14 @@ async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
 
-    if not update.message or not update.message.text:
+    if not update.message or not user:
         return
 
-    # Ignore admins and excluded IDs
+    # Avoid replies to excluded IDs
     if chat.type in ["group", "supergroup"]:
         if update.message.sender_chat and update.message.sender_chat.id in EXCLUDED_IDS:
             return
-        if user and user.id in EXCLUDED_IDS:
+        if user.id in EXCLUDED_IDS:
             return
         try:
             member: ChatMember = await context.bot.get_chat_member(chat.id, user.id)
@@ -64,22 +65,18 @@ async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    # Check duplicate message from same user
-    user_id = user.id
-    current_text = update.message.text.strip()
-    previous_text = last_messages.get(user_id)
-
-    if previous_text == current_text:
+    # Already replied to this user before
+    if user.id in replied_users:
         try:
             await update.message.delete()
         except:
             pass
         await update.message.reply_text("✅ Your request has been recorded. Please wait while we process it... ⏳")
     else:
-        last_messages[user_id] = current_text
+        replied_users.add(user.id)
         await update.message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
 
-# App and handlers
+# Build and run application
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
