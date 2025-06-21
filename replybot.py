@@ -23,9 +23,16 @@ threading.Thread(target=run_http_server, daemon=True).start()
 import os
 from telegram import Update, ChatMember
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
+from collections import defaultdict
+from dotenv import load_dotenv
 
+load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134]
+
+# Track previous messages and bot replies
+last_messages = defaultdict(str)
+last_bot_replies = defaultdict(int)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("👋 Hello Watcher! I am alive and running!")
@@ -42,6 +49,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
+    text = update.message.text
 
     if chat.type in ["group", "supergroup"]:
         if update.message.sender_chat and update.message.sender_chat.id in EXCLUDED_IDS:
@@ -55,8 +63,29 @@ async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
 
-    await update.message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
+    # Duplicate message check
+    if last_messages[user.id] == text:
+        # Delete old bot reply if it exists
+        if last_bot_replies.get(user.id):
+            try:
+                await context.bot.delete_message(chat.id, last_bot_replies[user.id])
+            except:
+                pass  # may already be deleted
 
+        # Send new formal reply
+        msg = await update.message.reply_text(
+            "✅ Your request has been recorded. Please wait while we process it... ⏳"
+        )
+        last_bot_replies[user.id] = msg.message_id
+        return
+    else:
+        last_messages[user.id] = text
+
+    # Send first reply
+    msg = await update.message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
+    last_bot_replies[user.id] = msg.message_id
+
+# Set up bot
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
