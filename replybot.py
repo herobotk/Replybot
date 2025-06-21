@@ -60,7 +60,7 @@ async def reply_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
         sent = await update.message.reply_text(
-            "✅ Your request has been recorded. Please wait while we process it... ⏳"
+            "ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳..."
         )
         user_messages[uid] = {"text": message_text, "bot_msg_id": sent.message_id}
     else:
