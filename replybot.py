@@ -35,7 +35,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📌 *Bot Commands:*\n"
         "/start – Start the bot\n"
         "/help – Show this help menu\n\n"
-        "📬 *Need Help?* [Click Here](http://t.me/Fedbk_rep_bot)",
+        "📬 *Need Help?* [𝐇𝐞𝐥𝐩 𝐨𝐫 𝐑𝐞𝐩𝐨𝐫𝐭 𝐛𝐨𝐭](http://t.me/Fedbk_rep_bot)",
         parse_mode="Markdown"
     )
 
