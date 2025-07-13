@@ -102,7 +102,7 @@ async def channel_handler(_, message: Message):
         print(f"[Channel Error] {e}")
 
 # ============ Group Handler (Reply Bot) ============
-@bot.on_message(filters.group & filters.text & ~filters.command)
+@bot.on_message(filters.group & filters.text & ~filters.command())
 async def group_reply_handler(_, message: Message):
     if message.chat.id != REPLYBOT_GROUP:
         return
