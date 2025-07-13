@@ -1,1 +1,1 @@
-web: python3 replybot.py
+web: python3 killme_replybot.py
