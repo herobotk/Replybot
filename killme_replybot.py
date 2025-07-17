@@ -19,6 +19,7 @@ Channel and Group IDs
 KILLME_CHANNELS = [-1002172427490, -1002027244866, -1002090397274, -1002242734668]
 REPLYBOT_GROUP = [-1001984521739, -1002489591727]
 GROUP_EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134]
+GROUP_EXCLUDED_SENDER_CHATS = [-1001984521739, -1002136991674, -1002489591727]
 
 Dictionary to track group replies
 
@@ -117,8 +118,8 @@ async def group_reply_handler(_, message: Message):
 if message.chat.id not in REPLYBOT_GROUP:
 return
 
-if message.sender_chat and message.sender_chat.id in GROUP_EXCLUDED_IDS:  
-    return  
+if message.sender_chat and message.sender_chat.id in GROUP_EXCLUDED_SENDER_CHATS:
+    return
 
 if message.from_user and message.from_user.id in GROUP_EXCLUDED_IDS:  
     return  
