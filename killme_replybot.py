@@ -1,140 +1,148 @@
-# killme_replybot.py
-# Telegram bot that cleans mentions/domains in channels and replies in groups
-# Fully DB-driven: add/remove allowed channels/groups/excluded IDs
-
-import asyncio
+import os
 import re
+import asyncio
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
 from pyrogram.types import Message
-from motor.motor_asyncio import AsyncIOMotorClient
-from config import API_ID, API_HASH, BOT_TOKEN, MONGO_URL, OWNER_ID
+from pyrogram.errors import FloodWait
+from humanize import naturalsize
 
-app = Client("killme_replybot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-db = AsyncIOMotorClient(MONGO_URL).killme_bot
+============ CONFIG ============
 
-# ------------------------ DB HELPERS ------------------------ #
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-async def is_allowed_channel(chat_id):
-    doc = await db.channels.find_one({"_id": chat_id})
-    return bool(doc)
+Channel and Group IDs
 
-async def is_allowed_group(chat_id):
-    doc = await db.groups.find_one({"_id": chat_id})
-    return bool(doc)
+KILLME_CHANNELS = [-1002172427490, -1002027244866, -1002090397274, -1002242734668]
+REPLYBOT_GROUP = [-1001984521739, -1002489591727]
+GROUP_EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134]
 
-async def is_excluded(user_id):
-    doc = await db.excluded.find_one({"_id": user_id})
-    return bool(doc)
+Dictionary to track group replies
 
-# ------------------------ CLEANER ------------------------ #
+user_messages = {}
 
-def clean_message(text):
-    if not text:
-        return text
-    # Remove mentions, t.me links, and domains
-    text = re.sub(r"@\w+", "", text)
-    text = re.sub(r"https?://t\.me/\S+", "", text)
-    text = re.sub(r"\b\w+\.(com|org|in|me|net|live|app|shop|info|link|xyz|lol|tube)\b", "", text, flags=re.IGNORECASE)
-    return text.strip()
+============ Health Check ============
 
-# ------------------------ HANDLERS ------------------------ #
+class HealthHandler(BaseHTTPRequestHandler):
+def do_GET(self):
+self.send_response(200)
+self.end_headers()
+self.wfile.write(b'Bot is alive!')
 
-@app.on_message(filters.channel)
-async def channel_cleaner(client, msg: Message):
-    if not await is_allowed_channel(msg.chat.id):
-        return
-    if not (msg.text or msg.caption):
-        return
+threading.Thread(target=lambda: HTTPServer(("", 8080), HealthHandler).serve_forever(), daemon=True).start()
 
-    text = msg.text or msg.caption
-    cleaned = clean_message(text)
+============ Filename Cleaner ============
 
-    if msg.media:
-        await msg.copy(msg.chat.id, caption=cleaned)
-    else:
-        await msg.reply(cleaned)
+def clean_filename(filename: str) -> str:
+keep_username = "@movie_talk_backup"
+filename = filename.replace(keep_username, "KEEP__USERNAME")
 
-@app.on_message(filters.group & filters.incoming)
-async def group_reply(client, msg: Message):
-    if not await is_allowed_group(msg.chat.id):
-        return
+filename = re.sub(r'@\w+', '', filename)  
+filename = re.sub(r'https?://\S+|www\.\S+|\S+\.(com|in|net|org|me|info)', '', filename)  
+filename = re.sub(r't\.me/\S+', '', filename)  
+filename = re.sub(r'[^\w\s.\-()_]', '', filename)  
+filename = re.sub(r'\s{2,}', ' ', filename).strip()  
 
-    user_id = msg.from_user.id if msg.from_user else None
-    sender_id = msg.sender_chat.id if msg.sender_chat else None
+return filename.replace("___KEEP__USERNAME___", keep_username)
 
-    if await is_excluded(msg.chat.id) or await is_excluded(user_id) or await is_excluded(sender_id):
-        return
+============ Caption Builder ============
 
-    if msg.text:
-        await msg.reply("Hello! Your message has been received ✨")
+def generate_caption(file_name, file_size):
+cleaned_name = clean_filename(file_name)
+return f"""{cleaned_name}
+⚙️ 𝚂𝚒𝚣𝚎 ~ [{file_size}]
+⚜️ 𝙿𝚘𝚜𝚝 𝚋𝚢 ~ 𝐌𝐎𝐕𝐈𝐄 𝐓𝐀𝐋𝐊
 
-# ------------------------ ADMIN COMMANDS ------------------------ #
+⚡𝖩𝗈𝗂𝗇 Us ~ ❤️
+➦『 @movie_talk_backup 』"""
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("add_chnl"))
-async def add_channel(_, msg):
-    if len(msg.command) < 2:
-        return await msg.reply("Send channel ID like: /add_chnl -100xxxx")
-    chat_id = int(msg.command[1])
-    await db.channels.update_one({"_id": chat_id}, {"$set": {"_id": chat_id}}, upsert=True)
-    await msg.reply(f"✅ Added channel `{chat_id}`")
+============ Bot Setup ============
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("add_grp"))
-async def add_group(_, msg):
-    if len(msg.command) < 2:
-        return await msg.reply("Send group ID like: /add_grp -100xxxx")
-    chat_id = int(msg.command[1])
-    await db.groups.update_one({"_id": chat_id}, {"$set": {"_id": chat_id}}, upsert=True)
-    await msg.reply(f"✅ Added group `{chat_id}`")
+bot = Client("killme_replybot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("add_exclude"))
-async def add_exclude(_, msg):
-    if len(msg.command) < 2:
-        return await msg.reply("Send user/chat ID to exclude")
-    uid = int(msg.command[1])
-    await db.excluded.update_one({"_id": uid}, {"$set": {"_id": uid}}, upsert=True)
-    await msg.reply(f"✅ Excluded ID `{uid}`")
+============ Private Commands ============
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("del_chnl"))
-async def del_channel(_, msg):
-    if len(msg.command) < 2:
-        return await msg.reply("Send channel ID to remove")
-    cid = int(msg.command[1])
-    await db.channels.delete_one({"_id": cid})
-    await msg.reply(f"❌ Removed channel `{cid}`")
+@bot.on_message(filters.private & filters.command("start"))
+async def start_cmd(_, message: Message):
+await message.reply("👋 Bot is alive! ReplyBot & KillMe logic activated.")
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("del_grp"))
-async def del_group(_, msg):
-    if len(msg.command) < 2:
-        return await msg.reply("Send group ID to remove")
-    gid = int(msg.command[1])
-    await db.groups.delete_one({"_id": gid})
-    await msg.reply(f"❌ Removed group `{gid}`")
+@bot.on_message(filters.private & filters.command("help"))
+async def help_cmd(_, message: Message):
+await message.reply_text(
+"📌 Bot Commands:\n"
+"/start – Start\n"
+"/help – Help\n\n"
+"✅ Group: ReplyBot active\n"
+"✅ Channels: KillMe bot (mention/domain cleaner)",
+disable_web_page_preview=True
+)
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("list_chnl"))
-async def list_channels(_, msg):
-    chs = await db.channels.find().to_list(None)
-    if not chs:
-        return await msg.reply("No channels added.")
-    txt = "**Allowed Channels:**\n" + "\n".join([f"`{c['_id']}`" for c in chs])
-    await msg.reply(txt)
+============ Channel Handler (Kill Me Bot) ============
 
-@app.on_message(filters.private & filters.user(OWNER_ID) & filters.command("list_grp"))
-async def list_groups(_, msg):
-    grs = await db.groups.find().to_list(None)
-    if not grs:
-        return await msg.reply("No groups added.")
-    txt = "**Allowed Groups:**\n" + "\n".join([f"`{g['_id']}`" for g in grs])
-    await msg.reply(txt)
+@bot.on_message(filters.channel & ~filters.me)
+async def channel_handler(_, message: Message):
+if message.chat.id not in KILLME_CHANNELS:
+return
 
-# ------------------------ ALIVE LOOP ------------------------ #
+media = message.document or message.video or message.audio  
+original_caption = message.caption or ""  
 
-async def keep_alive():
-    while True:
-        await asyncio.sleep(3600)
+if media and media.file_name:  
+    file_name = media.file_name  
+    file_size = naturalsize(media.file_size)  
+    caption = generate_caption(file_name, file_size)  
+else:  
+    caption = clean_filename(original_caption)  
 
-# ------------------------ START BOT ------------------------ #
+try:  
+    await message.copy(chat_id=message.chat.id, caption=caption)  
+    await message.delete()  
+except FloodWait as e:  
+    await asyncio.sleep(e.value)  
+    try:  
+        await message.copy(chat_id=message.chat.id, caption=caption)  
+        await message.delete()  
+    except Exception as e2:  
+        print(f"[Retry Error] {e2}")  
+except Exception as e:  
+    print(f"[Channel Error] {e}")
 
-if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(keep_alive())
-    app.run()
+============ Group Handler (Reply Bot) ============
+
+@bot.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
+async def group_reply_handler(_, message: Message):
+if message.chat.id not in REPLYBOT_GROUP:
+return
+
+if message.sender_chat and message.sender_chat.id in GROUP_EXCLUDED_IDS:  
+    return  
+
+if message.from_user and message.from_user.id in GROUP_EXCLUDED_IDS:  
+    return  
+
+user = message.from_user  
+if not user:  
+    return  
+
+uid = user.id  
+text = message.text.strip()  
+current = user_messages.get(uid)  
+
+if current and current["text"] == text:  
+    try:  
+        await bot.delete_messages(message.chat.id, current["bot_msg_id"])  
+    except:  
+        pass  
+    sent = await message.reply_text("ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳...")  
+else:  
+    sent = await message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")  
+
+user_messages[uid] = {"text": text, "bot_msg_id": sent.id}
+
+============ Run ============
+
+bot.run()
+
