@@ -14,11 +14,11 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 # Channel and Group IDs
-KILLME_CHANNELS = [-1002172427490, -1002027244866, -1002090397274, -1002242734668]
-REPLYBOT_GROUP = [-1001984521739, -1002489591727]
-GROUP_EXCLUDED_IDS = [-1001984521739, -1002136991674, 5764304134, -1002489591727]
+KILLME_CHANNELS = {-1002172427490, -1002027244866, -1002090397274, -1002242734668}
+REPLYBOT_GROUPS = {-1001984521739, -1002489591727}
+GROUP_EXCLUDED_IDS = {-1001984521739, -1002136991674, 5764304134, -1002489591727}
 
-# Dictionary to track group replies
+# User message tracking
 user_messages = {}
 
 # ============ Health Check ============
@@ -72,10 +72,12 @@ async def help_cmd(_, message: Message):
         disable_web_page_preview=True
     )
 
-# ============ Channel Handler (Kill Me Bot) ============
+# ============ Channel Handler ============
 @bot.on_message(filters.channel & ~filters.me)
 async def channel_handler(_, message: Message):
+    print(f"[Channel] From: {message.chat.id}")  # Debug log
     if message.chat.id not in KILLME_CHANNELS:
+        print("❌ Not in allowed channel list")
         return
 
     media = message.document or message.video or message.audio
@@ -101,16 +103,20 @@ async def channel_handler(_, message: Message):
     except Exception as e:
         print(f"[Channel Error] {e}")
 
-# ============ Group Handler (Reply Bot) ============
+# ============ Group Handler ============
 @bot.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
 async def group_reply_handler(_, message: Message):
-    if message.chat.id != REPLYBOT_GROUP:
+    print(f"[Group] From: {message.chat.id}")  # Debug log
+    if message.chat.id not in REPLYBOT_GROUPS:
+        print("❌ Not in allowed group list")
         return
 
     if message.sender_chat and message.sender_chat.id in GROUP_EXCLUDED_IDS:
+        print("❌ Ignored sender_chat")
         return
 
     if message.from_user and message.from_user.id in GROUP_EXCLUDED_IDS:
+        print("❌ Ignored user ID")
         return
 
     user = message.from_user
