@@ -2,6 +2,7 @@ import os
 import re
 import asyncio
 import threading
+import time  # ✅ Added for reply bot expiry check
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client, filters
 from pyrogram.types import Message
@@ -130,18 +131,22 @@ async def group_reply_handler(_, message: Message):
 
     uid = user.id
     text = message.text.strip()
+    now = time.time()
     current = user_messages.get(uid)
 
-    if current and current["text"] == text:
+    # ✅ Check if same user sent same message within 2 minutes
+    if current and current["text"] == text and (now - current.get("time", 0) < 120):
         try:
-            await bot.delete_messages(message.chat.id, current["bot_msg_id"])
+            await bot.edit_message_text(
+                message.chat.id,
+                current["bot_msg_id"],
+                "ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳..."
+            )
         except:
             pass
-        sent = await message.reply_text("ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳...")
     else:
         sent = await message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
-
-    user_messages[uid] = {"text": text, "bot_msg_id": sent.id}
+        user_messages[uid] = {"text": text, "bot_msg_id": sent.id, "time": now}
 
 # ============ Run ============
 
