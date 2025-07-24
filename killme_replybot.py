@@ -113,40 +113,60 @@ async def channel_handler(_, message: Message):
 
 # ============ Group Handler (Reply Bot) ============
 
+EXPIRY_SECONDS = 6 * 60 * 60  # 6 hours
+
 @bot.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
-async def group_reply_handler(_, message: Message):
+async def handle_group_message(_, message: Message):
     if message.chat.id not in REPLYBOT_GROUP:
         return
 
-    # ✅ Ignore messages from anonymous admins
     if message.sender_chat and message.sender_chat.id == message.chat.id:
         return
 
-    if message.from_user and message.from_user.id in GROUP_EXCLUDED_IDS:
-        return
-
     user = message.from_user
-    if not user:
+    if not user or user.id in GROUP_EXCLUDED_IDS:
         return
 
-    uid = user.id
-    text = message.text.strip()
-    now = time.time()
-    current = user_messages.get(uid)
+    user_id = user.id
+    message_text = message.text.strip()
+    current_time = time.time()
 
-    # ✅ Check if same user sent same message within 2 minutes
-    if current and current["text"] == text and (now - current.get("time", 0) < 120):
-        try:
-            await bot.edit_message_text(
-                message.chat.id,
-                current["bot_msg_id"],
-                "ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳..."
-            )
-        except:
-            pass
-    else:
-        sent = await message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
-        user_messages[uid] = {"text": text, "bot_msg_id": sent.id, "time": now}
+    previous_entry = user_messages.get(user_id)
+
+    if previous_entry:
+        prev_text = previous_entry.get("text")
+        prev_time = previous_entry.get("time", 0)
+
+        if prev_text == message_text and (current_time - prev_time) < EXPIRY_SECONDS:
+            try:
+                await bot.edit_message_text(
+                    chat_id=message.chat.id,
+                    message_id=previous_entry["bot_msg_id"],
+                    text="ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳..."
+                )
+            except Exception as e:
+                print(f"Edit failed: {e}")
+            return
+
+    # Optional cleanup: Remove expired entries
+    user_messages_cleaned = {
+        uid: data for uid, data in user_messages.items()
+        if (current_time - data.get("time", 0)) < EXPIRY_SECONDS
+    }
+    user_messages.clear()
+    user_messages.update(user_messages_cleaned)
+
+    try:
+        sent_reply = await message.reply_text(
+            "ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨"
+        )
+        user_messages[user_id] = {
+            "text": message_text,
+            "bot_msg_id": sent_reply.id,
+            "time": current_time
+        }
+    except Exception as e:
+        print(f"Reply failed: {e}")
 
 # ============ Run ============
 
