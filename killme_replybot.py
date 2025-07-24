@@ -2,14 +2,16 @@ import os
 import re
 import asyncio
 import threading
-import time  # ✅ Added for reply bot expiry check
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime, timedelta  # <-- ✅ Added
+from collections import defaultdict        # <-- ✅ Added
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.errors import FloodWait
 from humanize import naturalsize
-
 # ============ CONFIG ============
+# Stores latest user message data with timestamp
+user_messages = {}
 
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
@@ -113,60 +115,41 @@ async def channel_handler(_, message: Message):
 
 # ============ Group Handler (Reply Bot) ============
 
-EXPIRY_SECONDS = 6 * 60 * 60  # 6 hours
-
 @bot.on_message(filters.group & filters.text & ~filters.regex(r"^/"))
-async def handle_group_message(_, message: Message):
+async def group_reply_handler(_, message: Message):
     if message.chat.id not in REPLYBOT_GROUP:
         return
 
     if message.sender_chat and message.sender_chat.id == message.chat.id:
         return
 
-    user = message.from_user
-    if not user or user.id in GROUP_EXCLUDED_IDS:
+    if message.from_user and message.from_user.id in GROUP_EXCLUDED_IDS:
         return
 
-    user_id = user.id
-    message_text = message.text.strip()
-    current_time = time.time()
+    user = message.from_user
+    if not user:
+        return
 
-    previous_entry = user_messages.get(user_id)
+    uid = user.id
+    text = message.text.strip()
+    now = datetime.utcnow()
 
-    if previous_entry:
-        prev_text = previous_entry.get("text")
-        prev_time = previous_entry.get("time", 0)
+    current = user_messages.get(uid)
 
-        if prev_text == message_text and (current_time - prev_time) < EXPIRY_SECONDS:
+    if current:
+        # Compare message text and time
+        if current["text"] == text and now - current["time"] < timedelta(minutes=60):
             try:
-                await bot.edit_message_text(
-                    chat_id=message.chat.id,
-                    message_id=previous_entry["bot_msg_id"],
-                    text="ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳..."
-                )
-            except Exception as e:
-                print(f"Edit failed: {e}")
-            return
+                await bot.delete_messages(message.chat.id, current["bot_msg_id"])
+            except:
+                pass
+            sent = await message.reply_text("ᴀʟʀᴇᴀᴅʏ ɴᴏᴛᴇᴅ ✅\nᴘʟᴇᴀꜱᴇ ᴡᴀɪᴛ⏳...")
+        else:
+            sent = await message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
+    else:
+        sent = await message.reply_text("ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨")
 
-    # Optional cleanup: Remove expired entries
-    user_messages_cleaned = {
-        uid: data for uid, data in user_messages.items()
-        if (current_time - data.get("time", 0)) < EXPIRY_SECONDS
-    }
-    user_messages.clear()
-    user_messages.update(user_messages_cleaned)
-
-    try:
-        sent_reply = await message.reply_text(
-            "ʀᴇQᴜᴇꜱᴛ ʀᴇᴄᴇɪᴠᴇᴅ✅\nᴜᴘʟᴏᴀᴅ ꜱᴏᴏɴ... ᴄʜɪʟʟ✨"
-        )
-        user_messages[user_id] = {
-            "text": message_text,
-            "bot_msg_id": sent_reply.id,
-            "time": current_time
-        }
-    except Exception as e:
-        print(f"Reply failed: {e}")
+    user_messages[uid] = {"text": text, "bot_msg_id": sent.id, "time": now}
 
 # ============ Run ============
 
